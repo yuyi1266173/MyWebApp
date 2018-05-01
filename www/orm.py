@@ -4,7 +4,7 @@ import aiomysql
 import logging
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(name)s:%(levelname)s: %(message)s")
 
-__author__ = 'CC'
+__author__ = 'yuyi1266173'
 
 
 def log(sql, args=()):
