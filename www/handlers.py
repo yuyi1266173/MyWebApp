@@ -90,6 +90,14 @@ async def cookie2user(cookie_str):
         return None
 
 
+
+@get('/register')
+def register():
+    return {
+        "__template__": 'register.html'
+    }
+
+
 @post('/api/users')
 async def api_register_user(*, email, name, passwd):
     if not name or not name.strip():
@@ -115,6 +123,46 @@ async def api_register_user(*, email, name, passwd):
     r = web.Response()
     r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), max_age=86400, httponly=True)
     user.passwd = '********'
+    r.content_type = 'application/json'
+    r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
+    return r
+
+
+@get('/signin')
+def signin():
+    return {
+        "__template__": 'signin.html'
+    }
+
+
+@post('/api/authenticate')
+async def authenticate(*, email, passwd):
+    if not email:
+        raise APIValueError('email', 'Invalid email.')
+    if not passwd:
+        raise APIValueError('passwd', 'Invalid password.')
+    users = await User.findAll('email=?', [email])
+    if len(users) == 0:
+        raise APIValueError('email', 'Email not exist.')
+    user = users[0]
+
+    # 在Python 3.x版本中，把'xxx'和u'xxx'统一成Unicode编码，即写不写前缀u都是一样的，
+    # 而以字节形式表示的字符串则必须加上b前缀：b'xxx'。
+    # sha1 = hashlib.sha1()
+    # sha1.update(user.id.encode('utf-8'))
+    # sha1.update(b':')
+    # sha1.update(passwd.encode('utf-8'))
+
+    # 检查密码
+    browser_sha1_passwd = '%s:%s' % (user.id, passwd)
+    browser_sha1 = hashlib.sha1(browser_sha1_passwd.encode('utf-8'))
+    if user.passwd != browser_sha1.hexdigest():
+        raise APIValueError('passwd', 'Invalid password')
+
+    # authenticate ok, set cookie
+    r = web.Response()
+    r.set_cookie(COOKIE_NAME, user2cookie(user, 86400), max_age=86400, httponly=True)
+    user.passwd = "********"
     r.content_type = 'application/json'
     r.body = json.dumps(user, ensure_ascii=False).encode('utf-8')
     return r
