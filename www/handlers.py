@@ -90,6 +90,41 @@ async def cookie2user(cookie_str):
         return None
 
 
+@post('/result')
+async def handler_url_result(*, user_email, request):
+    response = '<h1>你输入的邮箱是%s</h1>' % user_email
+    return response
+
+
+@get('/')
+async def index(*, page='1'):
+    # summary = "Lorem ipsum dolor sit amet, consectetur adipisicing elit," \
+    #           " sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+    #
+    # blogs = [
+    #     Blog(id='1', name='Test Blog', summary=summary, created_at=time.time() - 120),
+    #     Blog(id='2', name='Something New', summary=summary, created_at=time.time() - 3600),
+    #     Blog(id='3', name='Learn Swift', summary=summary, created_at=time.time() - 7200)
+    # ]
+    page_index = get_page_index(page)
+    # 查找博客表里的条目数
+    num = await Blog.findNumber('count(id)')
+    # 没有条目则不显示
+    if not num or num == 0:
+        logging.info('the type of num is :%s' % type(num))
+        blogs = []
+    else:
+        page = Page(num, page_index)
+        # 根据计算出来的offset(取的初始条目index)和limit(取的条数)，来取出条目
+        # 首页只显示前5篇文章
+        blogs = await Blog.findAll(orderBy='created_at desc', limit=(0, 5))
+    return {
+        '__template__': 'blogs.html',
+        'page': page,
+        'blogs': blogs
+        # '__template__'指定的模板文件是blogs.html，其他参数是传递给模板的数据
+    }
+
 
 @get('/register')
 def register():
@@ -168,6 +203,16 @@ async def authenticate(*, email, passwd):
     return r
 
 
+@get('/signout')
+def signout(request):
+    referer = request.headers.get('Referer')
+    r = web.HTTPFound(referer or '/')
+    # 清理掉cookie来退出账户
+    r.set_cookie(COOKIE_NAME, '-deleted-', max_age=0, httponly=True)
+    logging.info('user signed out.')
+    return r
+
+
 # -----------------------------------------管理用户----------------------------------------------
 @get('/show_all_users')
 async def show_all_users():
@@ -178,6 +223,30 @@ async def show_all_users():
         'users:': users
     }
 
+@get('/api/users')
+async def api_get_users(*, page='1'):
+    page_index = get_page_index(page)
+    # count为MySQL中的聚集函数，用于计算某列的行数
+    # user_count代表了有多个用户id
+    user_count = await User.findNumber('count(id)')
+    p = Page(user_count, page_index)
+    # 通过Page类来计算当前页的相关信息, 其实是数据库limit语句中的offset，limit
+    if user_count == 0:
+        return dict(page=p, users=())
+    # page.offset表示从那一行开始检索，page.limit表示检索多少行
+    users = await User.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+
+    for u in users:
+        u.passwd = '*******'
+    return dict(page=p, users=users)
+
+
+@get('/manage/users')
+def manage_users(*, page='1'):
+    return {
+        '__template__': 'manage_users.html',
+        'page_index': get_page_index(page)
+    }
 
 
 # -----------------------------------------管理博客------------------------------------------------
@@ -283,5 +352,57 @@ def manage_modify_blog(id):
         'id': id,
         'action': '/api/blogs/modify'
     }
+
+
+# ----------------------------------------评论管理-----------------------------------------
+@get('/manage/')
+async def manage():
+    return 'redirect:/manage/comments'
+
+
+@get('/manage/comments')
+async def manage_commets(*, page='1'):
+    return {
+        '__template__': 'manage_comments.html',
+        'page_index': get_page_index(page)
+    }
+
+
+@get('/api/comments')
+async def api_comments(*, page='1'):
+    page_index = get_page_index(page)
+    num = await Comment.findNumber('count(id)')
+    p = Page(num, page_index)
+    if num == 0:
+        return dict(page=p, comments=())
+    comments = await Comment.findAll(orderBy='created_at desc', limit=(p.offset, p.limit))
+    return dict(page=p, comments=comments)
+
+
+@post('/api/blogs/{id}/comments')
+async def api_create_comment(id, request, *, content):
+    user = request.__user__
+    if user is None:
+        raise APIPermissionError('content')
+    if not content or not content.strip():
+        raise APIValueError('content')
+    blog = await Blog.find(id)
+    if blog is None:
+        raise APIResourceNotFoundError('Blog')
+    comment = Comment(blog_id=blog.id, user_id=user.id, user_name=user.name,
+                      user_image=user.image, content=content.strip())
+    await comment.save()
+    return comment
+
+
+@post('/api/comments/delete/{id}')
+async def api_delete_comments(id, request):
+    logging.info(id)
+    check_admin(request)
+    comment = await Comment.find(id)
+    if comment is None:
+        raise APIResourceNotFoundError('comment')
+    await comment.remove()
+    return dict(id=id)
 
 
