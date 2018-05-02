@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__author__ = 'Michael Liao'
+__author__ = 'yuyi1266173'
 
 import os
 import inspect
