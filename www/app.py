@@ -5,6 +5,8 @@ from datetime import datetime
 
 from aiohttp import web
 
+from ..conf.config import configs
+
 
 # 这个函数的作用就是当有http请求的时候，通过logging.info输出请求的信息，其中包括请求的方法和路径
 async def logger_factory(app, handler):
